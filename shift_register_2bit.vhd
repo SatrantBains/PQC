@@ -1,3 +1,6 @@
+library ieee;
+use ieee.std.logic.1164;
+
 -- Define the entity for the shift register
 entity shift_register is
     generic (
