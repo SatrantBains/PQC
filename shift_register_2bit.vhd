@@ -1,5 +1,5 @@
 library ieee;
-use ieee_std_logic_1164.all;
+use ieee.std_logic_1164.all;
 
 -- Define the entity for the shift register
 entity shift_register is
