@@ -6,7 +6,7 @@ entity twobit is
 		clk : in std_logic;
 		data_in : in std_logic_vector(1 downto 0);
 		data_out : out std_logic_vector(1 downto 0);
-		writeread : in std_logic; --1 equals write, 0 equals read	
+		writeread : in std_logic --1 equals write, 0 equals read	
 		);
 	end twobit;
 
