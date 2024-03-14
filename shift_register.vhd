@@ -16,9 +16,7 @@ end shift_register;
 
 -- Define the architecture for the shift register
 architecture Behavioral of shift_register is
-    type twobit_array is array (0 to REGISTER_DEPTH - 1) of std_logic_vector(1 downto 0); -- Change to std_logic_vector
-
-    -- Declare twobit ports
+    -- Declare twobit component
     component twobit is 
         port (
             clk, writeread : in std_logic;
@@ -27,18 +25,18 @@ architecture Behavioral of shift_register is
         );   
     end component;
 
-    -- Declare shift register signal
-    signal shift_reg : twobit_array;
+    -- Declare signal for the shift register
+    signal shift_reg : std_logic_vector(1 downto 0) := (others => '0');
 
 begin
-    process(clk)
+    process(clk, reset)
         variable i : integer;
     begin
         if rising_edge(clk) then -- Shift on rising clock edge
             if write_read = '1' then -- Only perform shift if write_read signal is high
-                -- Shift data through the shift register
+                -- Shift data through the register
                 for i in REGISTER_DEPTH - 2 downto 0 loop
-                    shift_reg(i + 1) <= shift_reg(i);
+                    shift_reg(i) => shift_reg(i+1);
                 end loop;
                 
                 -- Input data into the first register
@@ -46,6 +44,16 @@ begin
             end if;
         end if;
     end process;
+
+    -- Instantiate twobit components
+    twobit_inst : for i in 0 to REGISTER_DEPTH - 1 generate
+        twobit_inst_i : twobit port map (
+            clk => clk,
+            writeread => write_read,
+            datain => shift_reg(i),
+            dataout => shift_reg(i + 1)
+        );
+    end generate;
 
     -- Output the data from the last element
     data_out <= shift_reg(REGISTER_DEPTH - 1);
