@@ -5,7 +5,7 @@ entity mux2input is
 port (
 	input0 : in std_logic_vector(1 downto 0);
 	input1 : in std_logic_vector(1 downto 0);
-	sig : in std_logic;
+	sig : in std_logic; --placeholder
 	muxoutput : out std_logic_vector(1 downto 0)
 	);
 end mux2input;
