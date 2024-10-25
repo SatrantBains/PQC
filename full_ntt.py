@@ -1,7 +1,9 @@
+
 class full_ntt():
+    
     def __init__(self, size):
         self.memory = [1]*size
-
+    
     def orderReverse(self, poly, N_bit):
         """docstring for order"""
         for i, coeff in enumerate(poly):
@@ -54,58 +56,44 @@ class full_ntt():
         idx_even = []
         idx_odd = []
 
+        idx_tftemp = []
+        idx_tf = []
+
         while h <= n:
             hf = h // 2
+            ut = n // h
+
             for i in range(0, n, h):
                 for j in range(hf):
-                    idx_etemp.append(i+j), idx_otemp.append(i+j+hf)
-            idx_even.append(idx_etemp), idx_odd.append(idx_otemp)
+                    idx_etemp.append(i+j), idx_otemp.append(i+j+hf), idx_tftemp.append(ut * j)
+            idx_even.append(idx_etemp), idx_odd.append(idx_otemp), idx_tf.append(idx_tftemp)
             idx_etemp = []
             idx_otemp = []
+            idx_tftemp = []
             h *= 2
-        return idx_even, idx_odd
+        
+        return idx_even, idx_odd, idx_tf
     
-    def addr_gen(self, n, layer, log2n, num_bf=4, N_mem=128):
-        addr_rEven = []
-        addr_rOdd = []
-        gap = 2**layer
-        idx_Even, idx_Odd = self.idx_access_gen(8) 
-        n_div = N_mem // 2
-        if layer == 0:
-            for i in range(num_bf):
-                addr_rEven.append(i) 
-                addr_rOdd.append(i)
-        else:
-            for i in range(log2n-layer):
-                addr_EvenBase = idx_Even[layer][i] + i*gap*2
-                addr_OddBase = idx_Odd[layer][i] + i*gap*2
-                # idx_EvenNew = idx_Even[layer][i] % 
-                for j in range(gap):
-                    addr_rEven.append( (addr_EvenBase + j) // n_div)
-                    addr_rOdd.append( (addr_OddBase + j) // n_div)  
-        return addr_rEven, addr_rOdd
+    def bf_cnt_splice(self, arr, bf_cnt):
+        return [[row[i:i+4] for i in range(0, len(row), bf_cnt)] for row in arr]   
 
-    def addr_gen2(self, n, count, num_bf=8, N_mem=128):
+    def addr_gen(self, n, count,layer, idxe, idxo, num_bf=8, N_mem=128, N_bits = 8):
         addr_rEven = []
         addr_rOdd = []
         idx_even = []
         idx_odd = []
 
         c = n//2//num_bf
-        n_coef = N_mem // 8
-        layer = count // c
-        step = count % c
-        diff = 2 ** layer 
+        n_coef = N_mem // N_bits # 16 = bits per coef
+        # layer = count // c
+        diff = 2 ** layer
 
-        # idx_rd0 = 2*((step*num_bf) // diff)*diff+((step*num_bf) % diff)
-        # idx_rd1 = idx_rd0+diff
 
-        idx_rdEven, idx_rdOdd = self.idx_access_gen(8) 
-        idx_rd0 = idx_rdEven[count][0]
-        idx_rd1 = idx_rdOdd[count][0]
+        idx_rd0 = idxe[count][0]
+        idx_rd1 = idxo[count][0]
 
         parts = num_bf // diff if num_bf >= diff else 1
-        print("parts =", parts)
+        # print("parts =", parts)
         for i in range(parts):
 
             addr_rd0_base = idx_rd0 + i*diff*2
@@ -116,42 +104,137 @@ class full_ntt():
                 addr_rOdd.append( (addr_rd1_base + j) // n_coef)  
                 idx_even.append( (addr_rd0_base + j) % n_coef )
                 idx_odd.append( (addr_rd1_base + j) % n_coef )
-
+    
         return addr_rEven, addr_rOdd, idx_even, idx_odd
+    
+    def addr_gen2(self, n, count, num_bf=8, N_mem=256, bits = 16):
+        addr_rd0 = []
+        addr_rd1 = []
+        idx0 = []
+        idx1 = []
+
+        c = n//2//num_bf
+        n_coef = N_mem // bits
+        layer = count // c
+        step = count % c
+        diff = 2 ** layer 
+        idx_rd0 = 2*((step*num_bf) // diff)*diff+((step*num_bf) % diff)
+        idx_rd1 = idx_rd0+diff
+        ans = []
+        parts = num_bf // diff if num_bf >= diff else 1
+        # print("parts =", parts)
+        for i in range(parts):
+            addr_rd0_base = idx_rd0 + i*diff*2
+            addr_rd1_base = idx_rd1 + i*diff*2
+            for j in range(diff):
+                addr_rd0.append( (addr_rd0_base + j) // n_coef )
+                addr_rd1.append( (addr_rd1_base + j) // n_coef )
+                idx0.append( (addr_rd0_base + j) % n_coef )
+                idx1.append( (addr_rd1_base + j) % n_coef )
+
+                
+        return addr_rd0 , addr_rd1, idx0, idx1
+    
+    def addr_gen_fin(self, n, log2n, idxe, idxo, bf_cnt, N_mem, N_bits):
+        N_coef = N_mem//N_bits
+        rows, cols = 8, 128  # specify dimensions
+        idx_even = [[0] * cols for _ in range(rows)]
+        idx_odd = [[0] * cols for _ in range(rows)] 
+        addr_even = [[0] * cols for _ in range(rows)] 
+        addr_odd = [[0] * cols for _ in range(rows)]      
+          
+        for i in range(log2n):
+            for j in range(n//2):
+                idx_even[i][j] = idxe[i][j] % N_coef
+                idx_odd[i][j] = idxo[i][j] % N_coef
+                addr_even[i][j] = idxe[i][j]//16
+                addr_odd[i][j] = idxo[i][j]//16
+
+        idx_Even = self.bf_cnt_splice(idx_even,bf_cnt)
+        idx_Odd = self.bf_cnt_splice(idx_odd,bf_cnt)
+        addr_Even = self.bf_cnt_splice(addr_even, bf_cnt)
+        addr_Odd = self.bf_cnt_splice(addr_odd, bf_cnt)
+        return addr_Even, addr_Odd, idx_Even, idx_Odd
+
+    
+    def pre_gen_addr(self, n, log2n, idxe, idxo, bf_cnt, N_mem, N_bits):
+        addr_even_temp = []
+        addr_odd_temp = []
+
+        idx_even_temp = []
+        idx_odd_temp = []
+        
+        addr_even = []
+        addr_odd = []
+        
+        idx_Even = []
+        idx_Odd = []
+        
+        idx_even = self.bf_cnt_splice(idxe,bf_cnt)
+        idx_odd = self.bf_cnt_splice(idxo,bf_cnt)
+        for i in range(log2n):
+            for j in range( (n//2//bf_cnt)):
+                adde, addo, idxe, idxo = self.addr_gen(n,j,i,idx_even[i],idx_odd[i], bf_cnt,N_mem, N_bits)
+                addr_even_temp.append(adde)
+                addr_odd_temp.append(addo)
+                idx_even_temp.append(idxe)
+                idx_odd_temp.append(idxo)
+            addr_even.append(addr_even_temp), addr_odd.append(addr_odd_temp), idx_Even.append(idx_even_temp), idx_Odd.append(idx_odd_temp)
+            addr_even_temp = []
+            addr_odd_temp = []
+            idx_even_temp = []
+            idx_odd_temp = []
+        return addr_even, addr_odd, idx_Even, idx_Odd
+        
 
     def create_a(self, n):
         ans = []
         for i in range(n):
-            ans.append(i)
+            ans.append(i+1)
         return ans
-
-    def dual_port_bram_unit(self, readaddr, writeaddr, datain, reade, writee):
-
-        # initializing 5 memory location with one polynomials like [1,2,3,4,5,6,7,8] for testing
-        # in this case each polynomial has 8 coefficients is 8 bits and takes 64 bits total 
     
-        if reade == 1:
-            return self.memory[readaddr]
-        if writee == 1:
-            self.memory[writeaddr] = datain
-        elif(reade == 1 and writee == 1):
-            self.memory[writeaddr] = datain
-            return self.memory[readaddr]
+    def dual_port_bram_unit(self, addra, addrb, dataina, datainb, readea, readeb, writeea, writeeb):
+        dataouta, dataoutb = None, None  
+        
+        # Port A
+        if writeea:  
+            self.memory[addra] = dataina
+        if readea:  
+            dataouta = self.memory[addra]
+        
+        # Port B
+        if writeeb:  
+            self.memory[addrb] = datainb
+        if readeb:  
+            dataoutb = self.memory[addrb]
+        
+        return dataouta, dataoutb
     
+    def load_memory(self, n, n_addr, n_loc_size, n_bit_coeff ):
+        offset = n_loc_size//n_bit_coeff
+        poly = self.create_a(n)
+        # print(poly)
+        N_bit = n.bit_length() - 1
+        poly = self.orderReverse(poly, N_bit)
+        for i in range(n_addr):
+            data = poly[i*offset:i*offset+offset]
+            datatemp = self.dectobin(data,n_bit_coeff)
+            self.dual_port_bram_unit(i,0,datatemp,0,0,0,1,0)
 
         
-    def tf_gen_lookup(self, n, w, q):
+    def tf_gen_lookup(self, n, w, q, log2n, bf_cnt):
 
         w_array = [1]*(n//2)
         for i in range(1, n // 2):
             w_array[i] = (w**i)%q # generating roots that we will need
 
+    
         return w_array
 
 
-    def ct_butterfly(self, even, odd, w, q):
-        even = self.bintodec(even,8)[0]
-        odd = self.bintodec(odd,8)[0]
+    def ct_butterfly(self, even, odd, w, q, n_bits):
+        even = self.bintodec(even,n_bits)[0]
+        odd = self.bintodec(odd,n_bits)[0]
         odd = odd*w
         a = (even + odd)%q
         b = (even - odd)%q
@@ -183,13 +266,12 @@ class full_ntt():
 
         return result  # Return the final result
     
-    def cntrl_unit(self, layer):
+    def cntrl_unit(self, layer, n):
         #we now have idx_access_gen which generates the indeces we need to pull for the ntt
         # idx_even = ( [0,2,4,6], [0,1,4,5], [0,1,2,3] )
         # idx_odd = ( [1,3,5,7], [2,3,6,7], [4,5,6,7] )
-        idx_even, idx_odd = self.idx_access_gen(self.n)
+        idx_even, idx_odd = self.idx_access_gen(n)
 
-        addr = [[0],[5],[5]]
         return idx_even[layer], idx_odd[layer]
     
     def bintodec(self, a, n):
@@ -220,85 +302,106 @@ class full_ntt():
                     temp = '0' + temp
                 test += temp
             return test
-            
+
+    def bitwise_insert(self, data_out, idx, value, bits):
+        # Convert data_out to a list for easier bit-level manipulation
+        data_list = list(data_out)
+        # Insert value at the specified index by replacing bits
+        data_list[idx*bits:idx*bits + bits] = list(value)  # Replace bits at idx with value
+        return ''.join(data_list)
+
+                               
     # going to change significantly as we need to generate the mem access pattern with readaddr and writeadrr
     # control unit will contain the correct indeces needed
-    def full_scale_ntt(self, addr, q, w, n, bits):
-        # q = 17
-        # w = 9
-        # n = 8
-        # bf_cnt = 4
-        log2n = 3
-        
-        # Pre-processing polynomial bram -> bin -> decimal -> reversal -> stored back to bram 
+    def full_scale_ntt(self, q, w, n, log2n, bf_cnt, bits, N_mem):
 
-        # addr = 0, datain = 0, reade = 1, writee = 0, initialization = 1
-        a = self.one_port_bram_unit(addr,0,1,0)
+        idxe, idxo, idx_tf = self.idx_access_gen(n)
+        # idxe2, idxo2, idxtf2 = self.idx_access_gen(256)
+        test = 128//16
+        idx_tf = self.bf_cnt_splice(idx_tf, bf_cnt)
 
-        poly = self.bintodec(a,n)
-
-        # print("DECODED POLY: ", poly)
-
-        # order reversing our polynomial 
-        N_bit = n.bit_length() - 1
-        rev_poly = self.orderReverse(poly, N_bit)
-        poly = rev_poly 
-        
-        # print(poly)
-        datain = self.dectobin(poly,n)
-
-        # reversed polynomial sent back to memory 
-        self.one_port_bram_unit(addr, datain, 0, 1)
-
-
-        # test to see if reversal worked
-        # b = self.one_port_bram_unit(i,0,1,0,0)
-        # print(b)
-        # b = self.bintodec(b,n)
-
-        w_array = self.tf_gen_lookup(n,w,q)
+        w_array = self.tf_gen_lookup(n,w,q,log2n,bf_cnt)
         # print("ROOTS ARE: ", w_array)
         pattern = []
-        idx_evenf, idx_oddf = self.idx_access_gen(n)
+
+        # I am only generating one layer of index values -> need to fix 
+        # should be dimensions 8x32x4
+        # addr_evenr, addr_oddr, idx_evenr, idx_oddr = self.pre_gen_addr(n, log2n, idxe, idxo, bf_cnt, N_mem, bits)
+        addr_evenr,addr_oddr, idx_evenr,idx_oddr = self.addr_gen_fin(n,log2n,idxe,idxo,bf_cnt,N_mem,bits)
+        # n = 8 test
+        # addr_even = [[0,1,2,3],[0,0,2,2],[0,0,1,1]]
+        # addr_odd = [[0,1,2,3],[1,1,3,3],[2,2,3,3]]
+        # idx_even = [[0,0,0,0],[0,1,0,1],[0,1,0,1]]
+        # idx_odd = [[1,1,1,1],[0,1,0,1],[0,1,0,1]]
+        #loading spliced idxs and addrs 
+
+        # addr_event, addr_oddt, idx_event, idx_oddt = self.pre_gen_addr(256, 8, bf_cnt,128,16)
+        even = [1]*bf_cnt
+        odd = [1]*bf_cnt
+        u = [1]*bf_cnt
+        v = [1]*bf_cnt
+        twiddle_inner_idx = [1]*bf_cnt
 
         for i in range( log2n ):
+            twiddle_layer = idx_tf[i]
+            addr_even = addr_evenr[i]
+            addr_odd = addr_oddr[i]
+            idx_even = idx_evenr[i]
+            idx_odd = idx_oddr[i]
             # Pulling correct indeces from cntrl_unit
-            idx_even,idx_odd = idx_evenf[i], idx_oddf[i]
+            # idx_even,idx_odd = idx_evenf[i], idx_oddf[i]
+            # addr_even, addr_odd, idx_even, idx_odd = self.addr_gen(n,i,bf_cnt,16)
 
-            # Pulling data from bram location 0
-            bin_poly = self.one_port_bram_unit(addr, 0, 1, 0)
+            #addra, addrb, dataina, datainb, readea, readeb, writea, writeb
+            # bin_poly_even, bin_poly_odd = self.dual_port_bram_unit(addr_even,addr_odd,0,0,1,1,0,0)
 
-            print("i(layer):", i)
-            print("poly:", self.bintodec(bin_poly,8), "\n")
+            print("i(layer):#####################", i)
+            # print("poly:", self.bintodec(bin_poly,8), "\n")
+
+            for j in range (0, n//2//bf_cnt):
+                # print("j(layer):", j)
+                # print(addr_even,"\n",addr_odd,"\n",idx_even,"\n",idx_odd)
+
+                # data_out_even,data_out_odd = self.dual_port_bram_unit(addr_even[i][j],addr_odd[i][j],0,0,1,1,0,0)
+
+                for k in range(bf_cnt):
+                    # print("k(layer):", k)
+                    twiddle_inner_idx[k] = twiddle_layer[j][k]
+                    data_out_even,data_out_odd = self.dual_port_bram_unit(addr_even[j][k],addr_odd[j][k],0,0,1,1,0,0)
+
+                    even[k] = data_out_even[ idx_even[j][k]*bits:idx_even[j][k]*bits+bits ]
+                    odd[k] = data_out_odd[ idx_odd[j][k]*bits:idx_odd[j][k]*bits+bits ]
+                    
+                    teste = self.bintodec(even[k],bits)
+                    testo = self.bintodec(odd[k],bits)
+                    # print("Even: ", even)
+                    # print("Odd: ", odd, " TWIDDLE FACTOR IS: " , twiddle_factor)
+                    # print("odd = %d, even = %d " % (idx_odd[j],  idx_even[j]))
+
+                    # Data sent as binary converted interally to integers for calculation\
+                    tf = w_array[twiddle_inner_idx[k]]
+                    u[k],v[k] = self.ct_butterfly(even[k],odd[k],tf,q,bits)
             
-            for j in range(n//2):
-                twiddle_idx = (j * n) // (2**(i+1))
-                twiddle_factor = w_array[twiddle_idx % (n//2)] 
-                
-                # Using our idx_even/odd indeces to splice the data that we need    
-                # For example if we need index 0 we grab bits 1-8, if we need index 1 we grab 2-10...
-                even = bin_poly[ idx_even[j]*bits:idx_even[j]*bits+bits ]
-                odd = bin_poly[ idx_odd[j]*bits:idx_odd[j]*bits+bits ]
+                    u[k] = self.dectobin(u[k],bits)
+                    v[k] = self.dectobin(v[k],bits)
 
-                # print("Even: ", even)
-                # print("Odd: ", odd, " TWIDDLE FACTOR IS: " , twiddle_factor)
-                # print("odd = %d, even = %d " % (idx_odd[j],  idx_even[j]))
+                    # Python strings are immutable so to get around that I am simply splicing and inserting the changed data back into the string
+                    if(addr_even[j][k] == addr_odd[j][k]):
+                        data_in = self.bitwise_insert(data_out_even,idx_even[j][k],u[k], bits)
+                        data_in = self.bitwise_insert(data_in, idx_odd[j][k], v[k], bits)  # Keeps in-between bits intact
+                        self.dual_port_bram_unit(addr_even[j][k],0,data_in,0,0,0,1,0)
+                    else:
+                        data_in_even = data_out_even[:idx_even[j][k]*bits] + u[k] + data_out_even[idx_even[j][k]*bits+bits:]
+                        data_in_odd = data_out_odd[:idx_odd[j][k]*bits] + v[k] + data_out_odd[idx_odd[j][k]*bits+bits:]
+                        # pattern.append((idx_even[j][k], idx_odd[j][k]))
+                            # Store binary data back into bram
+                        self.dual_port_bram_unit(addr_even[j][k],addr_odd[j][k],data_in_even,data_in_odd,0,0,1,1)
 
-                # Data sent as binary converted interally to integers for calculation
-                u,v = self.ct_butterfly(even,odd,twiddle_factor,q)
-            
-                u = self.dectobin(u,bits)
-                v = self.dectobin(v,bits)
-
-                # Python strings are immutable so to get around that I am simply splicing and inserting the changed data back into the string 
-                bin_poly = bin_poly[:idx_even[j]*bits] + u + bin_poly[idx_even[j]*bits+bits:]
-                bin_poly = bin_poly[:idx_odd[j]*bits] + v + bin_poly[idx_odd[j]*bits+bits:]
-                pattern.append((idx_even[j], idx_odd[j], twiddle_idx % (n//2), twiddle_factor))
-                # Store binary data back into bram
-                self.one_port_bram_unit(addr, bin_poly, 0, 1)
-
-        poly = self.one_port_bram_unit(addr,0,1,0)
-        poly = self.bintodec(poly,8)
+        # poly = self.bintodec(poly,8)
+        poly = ''
+        for i in range(N_mem//bits):
+            poly += self.dual_port_bram_unit(i,0,0,0,1,0,0,0)[0] 
+        poly = self.bintodec(poly,bits)
         return poly, pattern
     
     def small_scale_intt(self, addr, q, n, w, bits):
@@ -334,77 +437,63 @@ class full_ntt():
             poly[i] = (poly[i] * inverted_n) % q
 
         return poly,pattern
+    
+
+
 
         
 
 
-from sympy import ntt 
+from sympy import ntt
 
 if __name__ == '__main__':
+    n_mem_loc = 32 
 
-    ntt = full_ntt(32) # -> we need 16 memory locations for n = 256 where each bram addr contains 16 coefficients 
-    even,odd = (ntt.idx_access_gen(8))
-    print(even)
-    print(odd)
-    # poly = ntt.create_a(256)
-    # test,test2= ntt.addr_gen(8,2,3,4,16)
+
+    ntte = full_ntt(n_mem_loc) 
+
+    # seq = ntte.create_a(256)
+    # test = ntt(seq,18433)
     # print(test)
+    # test2 = ntt(test, 18433, True)
     # print(test2)
-    for i in range (3):
-        test3,test4,test5,test6 = ntt.addr_gen2(8,i,4,16)
-        print(test3)
-        print(test4)
-        print(test5)
-        print(test6)
-    # test2 = ntt.dectobin(mem5,16)
-    # print(test2)
-    # test3 = ntt.bintodec(test2,16)
-    # print(test3)
-    
-    #Generating 32 memory locations with 8 16 bit coeffiecients each 
-    # for i in range(32):
-    #     mem = poly[i*8:i*8+8]
-    #     memtemp = ntt.dectobin(mem,16)
-    #     ntt.dual_port_bram_unit(i,memtemp,0,1)
-    # for i in range(7):
-    #     test,test2 = ntt.addr_gen(256,i,4,128)
-    #     print("EVEN: ", test)
-    #     print("ODD ", test2)
-        
-    # mem5 = poly[:128]
-    # mem6 = poly[128:]
 
-    # mem5 = ntt.dectobin(mem5, 16)
-    # mem6 = ntt.dectobin(mem6, 16)
-
-    # ntt.one_port_bram_unit(5,mem5,0,1,1)
-    # ntt.one_port_bram_unit(6,mem6,0,1,0)
-    # b = ntt.one_port_bram_unit(5,0,1,0,0)
-    # print(b)
-    # idx_even, idx_odd = ntt.idx_access_gen(256)
-    # print(idx_even, "\n")
-    # print(idx_odd)
-
+    # # N = 8 
     # q = 17
-    # w = 9
     # n = 8
+    # w = 9
+    # num_bf = 4
+    # N_mem = 4
+    # bits = 16
+    # n_bits_coef = 8
 
-    # a = [1,2,3,4,5,6,7,8]
+    # # N = 16 
+    # q = 97
+    # n = 16
+    # w = 8
+    # num_bf = 4
+    # N_mem = 4
+    # n_bits_coef = 16
+
+    # N = 256 -
+    q = 18433
+    n = 256
+    w = 5329
+    num_bf = 4
+    N_mem = 256
+    n_bits_coef = 16
+
+
+
+    ntte.load_memory(256,16,256,16)
+    # ntte.load_memory(8,4,16,8)
+
+
+    # test,test2 = ntte.full_scale_ntt(q,w,n,3,4,8,16)
+    # print(test)
  
-    # ntt2 = ntt(a,17)
-    
-    # TO DO ->  Split 256 polynomial into two different memory locations -> Figure out how to generalize
-    # print("###################### NTT ######################")
-    # print("Starting Polynomial: ", a)
-    # ntt = full_ntt(10)
+    final,test= ntte.full_scale_ntt(q,w,n,8,4,n_bits_coef,N_mem)
+    print(final)
 
-    # ntt1,pattern = ntt.full_scale_ntt(0, q, w, n, 1,8)
-    # print("Transformed Polynomial: ", ntt1)
-    # print("Confirmed Result : ", ntt2 , "\n")
-    # print("Access Pattern: ", pattern , "\n")
 
-    # print("###################### INTT ######################")
-    # print("Starting Polynomial: ", ntt1)
-    # intt, patti = ntt.small_scale_intt(0,q,n,w,8)
-    # print("Transformed Polynomial ", intt, "\n")
-    # print("Access Pattern: ", patti , "\n")
+
