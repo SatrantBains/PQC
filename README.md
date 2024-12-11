@@ -1,4 +1,4 @@
-NOTE: CURRENT VHDL ITERATION OF NTT IS COMPLETE AND NOT FOR GENERAL USE
+NOTE: CURRENT VHDL ITERATION OF NTT IS INCOMPLETE AND NOT IN USE
 To use the currenet python implementation follow these steps
 1. Install python
 2. Download and install full_ntt.py from our repo
